@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -63,54 +63,91 @@ const DELIVERY_STATUS = 1; // 0 = Warehouse, 1 = Out for Delivery, 2 = Delivered
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const getCatMeta = (key) => CATS.find((c) => c.key === key);
-const getCatIcon = (key) => getCatMeta(key)?.icon ?? "📦";
-const getCatListImg = (key) => getCatMeta(key)?.listImg ?? null;
+// Find full category object by key
+function getCatMeta(key) {
+  return CATS.find((c) => c.key === key);
+}
 
-const formatDate = (d) =>
-  d.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" });
-const formatDateShort = (d) =>
-  d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
+// Get just the emoji icon for a category
+function getCatIcon(key) {
+  return getCatMeta(key)?.icon ?? "📦";
+}
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
+// Get the small thumbnail image for a category
+function getCatListImg(key) {
+  return getCatMeta(key)?.listImg ?? null;
+}
 
+// Format date as "Monday, 25 March"
+function formatDate(d) {
+  return d.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" });
+}
+
+// Format date short as "Mon, 25 Mar"
+function formatDateShort(d) {
+  return d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
+}
+
+// Group an array of items by their category field
+function groupByCategory(items) {
+  const groups = {};
+  for (const item of items) {
+    if (!groups[item.category]) groups[item.category] = [];
+    groups[item.category].push(item);
+  }
+  return groups;
+}
+
+// ─── Small Components ─────────────────────────────────────────────────────────
+
+// Delivery progress tracker — compact (sidebar) or full (checkout)
 function Tracker({ compact = false }) {
   return (
     <div style={compact ? styles.miniTrackerWrap : styles.fullTrackerWrap}>
-      {!compact && (
-        <div style={styles.coTrackerTitle}>Delivery Status</div>
-      )}
-      {compact && (
-        <div style={styles.deliveryLabel}>Delivery Status</div>
-      )}
+      {/* Title label */}
+      {compact
+        ? <div style={styles.deliveryLabel}>Delivery Status</div>
+        : <div style={styles.coTrackerTitle}>Delivery Status</div>
+      }
+
+      {/* Steps row */}
       <div style={styles.trackerRow}>
         {DELIVERY_STEPS.map((step, i) => {
-          const done   = i < DELIVERY_STATUS;
-          const active = i === DELIVERY_STATUS;
+          const isDone   = i < DELIVERY_STATUS;
+          const isActive = i === DELIVERY_STATUS;
+
+          // Build icon and label styles based on state
+          const iconStyle = {
+            ...(compact ? styles.dstepIcon : styles.tstepCircle),
+            ...(isActive ? (compact ? styles.dstepIconActive : styles.tstepCircleActive) : {}),
+            ...(isDone   ? (compact ? styles.dstepIconDone   : styles.tstepCircleDone)   : {}),
+          };
+          const labelStyle = {
+            ...(compact ? styles.dstepLbl : styles.tstepName),
+            ...(isActive ? (compact ? styles.dstepLblActive : styles.tstepNameActive) : {}),
+          };
+
           return (
             <div key={i} style={styles.trackerFragment}>
+              {/* Single step */}
               <div style={compact ? styles.miniStep : styles.fullStep}>
-                <div style={{
-                  ...(compact ? styles.dstepIcon : styles.tstepCircle),
-                  ...(active ? (compact ? styles.dstepIconActive : styles.tstepCircleActive) : {}),
-                  ...(done  ? (compact ? styles.dstepIconDone   : styles.tstepCircleDone)   : {}),
-                }}>
-                  {step.icon}
-                </div>
-                <div style={{
-                  ...(compact ? styles.dstepLbl : styles.tstepName),
-                  ...(active  ? (compact ? styles.dstepLblActive : styles.tstepNameActive) : {}),
-                }}>
-                  {step.label}
-                </div>
+                <div style={iconStyle}>{step.icon}</div>
+                <div style={labelStyle}>{step.label}</div>
+                {/* Sub-status only shown in full (checkout) view */}
                 {!compact && (
                   <div style={styles.tstepSub}>
-                    {active ? "In Progress" : done ? "Done" : "Pending"}
+                    {isActive ? "In Progress" : isDone ? "Done" : "Pending"}
                   </div>
                 )}
               </div>
+
+              {/* Connecting line between steps — green if done, animated if active */}
               {i < DELIVERY_STEPS.length - 1 && (
-                <div style={{ ...styles.trackerLine, ...(done ? styles.trackerLineDone : {}) }} />
+                <div style={{
+                  ...styles.trackerLine,
+                  ...(isDone   ? styles.trackerLineDone   : {}),
+                  ...(isActive ? styles.trackerLineActive : {}),
+                }} />
               )}
             </div>
           );
@@ -120,158 +157,245 @@ function Tracker({ compact = false }) {
   );
 }
 
+// Small category thumbnail image with emoji fallback
 function ItemThumb({ catKey, size = 44 }) {
-  const [errored, setErrored] = useState(false);
+  const [imgFailed, setImgFailed] = useState(false);
   const imgSrc = getCatListImg(catKey);
   const icon   = getCatIcon(catKey);
-  const radius = 10;
 
-  if (!imgSrc || errored)
+  // Show emoji if no image or image failed to load
+  if (!imgSrc || imgFailed) {
     return (
-      <div style={{ width: size, height: size, borderRadius: radius, background: "rgba(255,255,255,.07)",
-        display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.45, flexShrink: 0 }}>
+      <div style={{
+        width: size, height: size, borderRadius: 10,
+        background: "rgba(255,255,255,.07)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: size * 0.45, flexShrink: 0,
+      }}>
         {icon}
       </div>
     );
+  }
 
   return (
     <img
-      src={imgSrc} alt={catKey} loading="lazy"
-      onError={() => setErrored(true)}
-      style={{ width: size, height: size, borderRadius: radius, objectFit: "cover", flexShrink: 0 }}
+      src={imgSrc}
+      alt={catKey}
+      loading="lazy"
+      onError={() => setImgFailed(true)}
+      style={{ width: size, height: size, borderRadius: 10, objectFit: "cover", flexShrink: 0 }}
     />
   );
 }
 
-// ─── Main Component ──────────────────────────────────────────────────────────
+// Stat card used in the sidebar (Pending / Bought / Total)
+function StatCard({ value, label, color }) {
+  return (
+    <div style={styles.stat}>
+      <div style={{ ...styles.sn, color }}>{value}</div>
+      <div style={styles.sl}>{label}</div>
+    </div>
+  );
+}
+
+// Small tip row at the bottom of the add form
+function Tip({ color, text }) {
+  return (
+    <div style={styles.tip}>
+      <div style={{ ...styles.tipDot, background: color }} />
+      {text}
+    </div>
+  );
+}
+
+// Category card in the grid (image + label)
+function CatCard({ cat, selected, onSelect }) {
+  const [imgFailed, setImgFailed] = useState(false);
+
+  return (
+    <div
+      className="cat-card"
+      onClick={() => onSelect(cat.key)}
+      style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, cursor: "pointer" }}
+    >
+      <div
+        className="cat-img-wrap"
+        style={{
+          width: 58, height: 58, borderRadius: 16, overflow: "hidden",
+          border: selected ? "2px solid #2d6a4f" : "2px solid transparent",
+          background: "#ece7dd",
+          boxShadow: selected
+            ? "0 0 0 3px rgba(45,106,79,.15), 0 3px 10px rgba(0,0,0,.08)"
+            : "0 2px 6px rgba(0,0,0,.06)",
+          transition: "all .16s",
+        }}
+      >
+        {imgFailed
+          ? <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>
+              {cat.icon}
+            </div>
+          : <img
+              src={cat.img}
+              alt={cat.label}
+              loading="lazy"
+              onError={() => setImgFailed(true)}
+              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+            />
+        }
+      </div>
+      <div style={{
+        fontSize: 10, fontWeight: selected ? 600 : 500,
+        color: selected ? "#2d6a4f" : "#9a9080",
+        textAlign: "center", lineHeight: 1.2,
+      }}>
+        {cat.label}
+      </div>
+    </div>
+  );
+}
+
+// Small category preview shown above the item input form
+function CatPreviewImg({ cat }) {
+  const [imgFailed, setImgFailed] = useState(false);
+  if (imgFailed) return <span style={{ fontSize: 26 }}>{cat.icon}</span>;
+  return (
+    <img
+      src={cat.img}
+      alt={cat.label}
+      onError={() => setImgFailed(true)}
+      style={{ width: 34, height: 34, borderRadius: 8, objectFit: "cover" }}
+    />
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function GroceryManager() {
- const [items, setItems] = useState([]);
-  const [tab, setTab]               = useState("all");
+  // All grocery items
+  const [items, setItems] = useState([]);
+
+  // Which tab is active: "all" | "pending" | "done"
+  const [tab, setTab] = useState("all");
+
+  // Currently selected category key
   const [selectedCat, setSelectedCat] = useState(CATS[0].key);
-  const [view, setView]             = useState("add"); // "add" | "checkout"
+
+  // Which right-panel view: "add" | "checkout"
+  const [view, setView] = useState("add");
+
+  // Whether to show the success overlay
   const [showSuccess, setShowSuccess] = useState(false);
-  const [iName, setIName]           = useState("");
-  const [iQty,  setIQty]            = useState("");
-  const [iUnit, setIUnit]           = useState("");
+
+  // Form field values
+  const [itemName, setItemName] = useState("");
+  const [itemQty,  setItemQty]  = useState("");
+  const [itemUnit, setItemUnit] = useState("");
 
   const today = new Date();
 
- useEffect(() => {
-  fetch('/items')
-    .then(res => res.json())
-    .then(result => {
-      setItems(result.data);
+  // Load items from server on mount
+  useEffect(() => {
+    fetch("/items")
+      .then((res) => res.json())
+      .then((result) => setItems(result.data));
+  }, []);
+
+  // ── Derived stats ──────────────────────────────────────────────────────────
+  const totalCount   = items.length;
+  const boughtCount  = items.filter((i) => i.purchased).length;
+  const pendingCount = totalCount - boughtCount;
+  const progressPct  = totalCount ? Math.round((boughtCount / totalCount) * 100) : 0;
+
+  // ── CRUD actions ──────────────────────────────────────────────────────────
+
+  async function addItem() {
+    if (!itemName.trim()) return;
+
+    const newItem = {
+      name:     itemName.trim(),
+      quantity: +itemQty || 1,
+      unit:     itemUnit.trim() || "pcs",
+      category: selectedCat,
+    };
+
+    const res    = await fetch("/items", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newItem),
     });
-}, []);
+    const result = await res.json();
 
-  // Stats
-  const total    = items.length;
-  const done = items.filter((i) => i.purchased).length;
-  const pending  = total - done;
-  const pct      = total ? Math.round((done / total) * 100) : 0;
+    if (result.success) {
+      setItems((prev) => [result.data, ...prev]);
+    }
 
-  // CRUD
- const addItem = async () => {
-  if (!iName.trim()) return;
+    // Clear the form
+    setItemName("");
+    setItemQty("");
+    setItemUnit("");
+  }
 
-  const newItem = {
-    name: iName.trim(),
-    quantity: +iQty || 1,
-    unit: iUnit.trim() || "pcs",
-    category: selectedCat,
-  };
+  async function toggleItem(id, currentStatus) {
+    const res    = await fetch(`/items/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ purchased: !currentStatus }),
+    });
+    const result = await res.json();
 
-  const res = await fetch('/items', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(newItem)
+    if (result.success) {
+      // Replace the updated item in state
+      setItems((prev) => prev.map((item) => item._id === id ? result.data : item));
+    }
+  }
+
+  async function deleteItem(id, e) {
+    e.stopPropagation(); // Don't trigger the row's toggle click
+
+    const res    = await fetch(`/items/${id}`, { method: "DELETE" });
+    const result = await res.json();
+
+    if (result.success) {
+      setItems((prev) => prev.filter((item) => item._id !== id));
+    }
+  }
+
+  // Delete all purchased items
+  async function clearBought() {
+    const boughtItems = items.filter((item) => item.purchased);
+    for (const item of boughtItems) {
+      await fetch(`/items/${item._id}`, { method: "DELETE" });
+    }
+    setItems((prev) => prev.filter((item) => !item.purchased));
+  }
+
+  // Show the success screen
+  function placeOrder() {
+    setShowSuccess(true);
+  }
+
+  // Delete all items and reset to add view
+  async function closeSuccess() {
+    for (const item of items) {
+      await fetch(`/items/${item._id}`, { method: "DELETE" });
+    }
+    setShowSuccess(false);
+    setView("add");
+    setItems([]);
+  }
+
+  // ── Filtered & grouped list for display ───────────────────────────────────
+
+  const filteredItems = items.filter((item) => {
+    if (tab === "pending") return !item.purchased;
+    if (tab === "done")    return item.purchased;
+    return true; // "all"
   });
 
-  const result = await res.json();
+  const groupedItems = groupByCategory(filteredItems);
+  const activeCat    = getCatMeta(selectedCat);
 
-  if (result.success) {
-    setItems(prev => [result.data, ...prev]);
-  }
-
-  setIName("");
-  setIQty("");
-  setIUnit("");
-};
-
-  const toggleItem = async (id, currentStatus) => {
-  const res = await fetch(`/items/${id}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      purchased: !currentStatus
-    })
-  });
-
-  const result = await res.json();
-
-  if (result.success) {
-    setItems(prev =>
-      prev.map(item =>
-        item._id === id ? result.data : item
-      )
-    );
-  }
-};
-  const deleteItem = async (id, e) => {
-  e.stopPropagation();
-
-  const res = await fetch(`/items/${id}`, {
-    method: 'DELETE'
-  });
-
-  const result = await res.json();
-
-  if (result.success) {
-    setItems(prev => prev.filter(item => item._id !== id));
-  }
-};
-  const clearDone = async () => {
-  const boughtItems = items.filter((item) => item.purchased);
-
-  for (const item of boughtItems) {
-    await fetch(`/items/${item._id}`, {
-      method: 'DELETE',
-    });
-  }
-
-  setItems((prev) => prev.filter((item) => !item.purchased));
-};
-  const placeOrder  = () => setShowSuccess(true);
- const closeSuccess = async () => {
-  for (const item of items) {
-    await fetch(`/items/${item._id}`, {
-      method: 'DELETE',
-    });
-  }
-
-  setShowSuccess(false);
-  setView("add");
-  setItems([]);
-};
-
-  // Filtered list
-  const filteredItems = items.filter((i) =>
-  tab === "all" ? true : tab === "pending" ? !i.purchased : i.purchased
-);
-
-  // Group by category
-  const grouped = filteredItems.reduce((acc, item) => {
-   if (!acc[item.category]) acc[item.category] = [];
-acc[item.category].push(item);
-    return acc;
-  }, {});
-
-  const activeCat = getCatMeta(selectedCat);
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div style={styles.app}>
@@ -296,44 +420,45 @@ acc[item.category].push(item);
         .cat-card:hover .cat-img-wrap { transform: translateY(-3px); }
         input:focus { border-color: #2d6a4f !important; box-shadow: 0 0 0 3px rgba(45,106,79,.09) !important; }
         .success-card { animation: popIn .3s cubic-bezier(.34,1.56,.64,1); }
+        @keyframes shimmer { 0%,100% { background-position: 200% center; } 50% { background-position: 0% center; } }
       `}</style>
 
-      {/* ══ LEFT ══ */}
+      {/* ══ LEFT SIDEBAR ══ */}
       <div style={styles.left}>
         <div style={styles.leftBg} />
 
-        {/* Header */}
+        {/* Brand + date */}
         <div style={styles.leftHead}>
           <div style={styles.brand}>CART<span style={{ color: "#a8e063" }}>.</span></div>
           <div style={styles.dateLbl}>{formatDate(today)}</div>
         </div>
 
-        {/* Stats */}
+        {/* Stats: pending / bought / total */}
         <div style={styles.statsGrid}>
-          <StatCard value={pending} label="Pending"  color="#ff9080" />
-          <StatCard value={done}    label="Bought"   color="#a8e063" />
-          <StatCard value={total}   label="Total"    color="#fff"    />
+          <StatCard value={pendingCount} label="Pending" color="#ff9080" />
+          <StatCard value={boughtCount}  label="Bought"  color="#a8e063" />
+          <StatCard value={totalCount}   label="Total"   color="#fff"    />
         </div>
 
-        {/* Progress */}
+        {/* Progress bar */}
         <div style={styles.progWrap}>
           <div style={styles.progTop}>
             <span style={styles.progTitle}>Progress</span>
-            <span style={styles.progPct}>{pct}%</span>
+            <span style={styles.progPct}>{progressPct}%</span>
           </div>
           <div style={styles.progTrack}>
-            <div style={{ ...styles.progFill, width: `${pct}%` }} />
+            <div style={{ ...styles.progFill, width: `${progressPct}%` }} />
           </div>
         </div>
 
-        {/* Mini delivery tracker */}
+        {/* Mini delivery tracker strip */}
         <div style={styles.deliveryStrip}>
           <Tracker compact />
         </div>
 
-        {/* Tabs */}
+        {/* All / Pending / Bought tabs + Clear button */}
         <div style={styles.tabsRow}>
-          {["all","pending","done"].map((t) => (
+          {["all", "pending", "done"].map((t) => (
             <button
               key={t}
               className={`tab-btn ${tab === t ? "tab-active" : ""}`}
@@ -344,63 +469,74 @@ acc[item.category].push(item);
             </button>
           ))}
           <div style={{ flex: 1 }} />
-          <button className="clear-btn" onClick={clearDone} style={styles.clearBtn}>
+          <button className="clear-btn" onClick={clearBought} style={styles.clearBtn}>
             Clear bought
           </button>
         </div>
 
-        {/* Item list */}
+        {/* Scrollable item list */}
         <div style={styles.listScroll}>
-          {Object.keys(grouped).length === 0 ? (
+          {Object.keys(groupedItems).length === 0 ? (
+            // Empty state
             <div style={styles.emptyState}>
               <img
                 style={styles.emptyImg}
                 src="https://images.unsplash.com/photo-1542838132-92c53300491e?w=220&q=75"
-                alt="empty"
+                alt="empty cart"
                 onError={(e) => { e.target.style.display = "none"; }}
               />
               <div style={styles.emptyTxt}>
-                {tab === "all"     ? "Basket is empty.\nAdd items →" :
-                 tab === "pending" ? "All done! 🎉" : "Nothing bought yet."}
+                {tab === "all"     ? "Basket is empty.\nAdd items →"
+               : tab === "pending" ? "All done! 🎉"
+               :                    "Nothing bought yet."}
               </div>
             </div>
           ) : (
-            Object.entries(grouped).map(([cat, catItems]) => (
+            // Items grouped by category
+            Object.entries(groupedItems).map(([cat, catItems]) => (
               <div key={cat}>
+                {/* Category heading */}
                 <div style={styles.catHead}>
                   <span>{getCatIcon(cat)}</span>
                   {cat}
                   <div style={styles.catHeadLine} />
                 </div>
+
+                {/* Items in this category */}
                 {catItems.map((item, idx) => (
                   <div
-                    key={item.id}
+                    key={item._id}
                     className="item-row"
                     onClick={() => toggleItem(item._id, item.purchased)}
                     style={{
                       ...styles.itemRow,
-                      ...(item.purchased? styles.itemRowDone : {}),
+                      ...(item.purchased ? styles.itemRowDone : {}),
                       animationDelay: `${idx * 0.04}s`,
                     }}
                   >
-                    <ItemThumb catKey={item.cat} />
-                    <div style={{
-                      ...styles.chk,
-                      ...(item.purchased ? styles.chkOn : {}),
-                    }}>
+                    <ItemThumb catKey={item.category} />
+
+                    {/* Checkbox */}
+                    <div style={{ ...styles.chk, ...(item.purchased ? styles.chkOn : {}) }}>
                       {item.purchased && (
                         <svg width="10" height="8" fill="none" viewBox="0 0 10 8">
                           <path d="M1 4l2.5 2.5L9 1" stroke="#1b4332" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                       )}
                     </div>
+
+                    {/* Name + qty/unit */}
                     <div style={styles.iDetail}>
-                      <div style={{ ...styles.iName, ...(item.purchased ? styles.iNameDone : {}) }}>{item.name}</div>
+                      <div style={{ ...styles.iName, ...(item.purchased ? styles.iNameDone : {}) }}>
+                        {item.name}
+                      </div>
                       <div style={styles.iMeta}>{item.quantity} {item.unit}</div>
                     </div>
+
+                    {/* Delete button */}
                     <button
                       className="del-btn"
-                     onClick={(e) => deleteItem(item._id, e)}
+                      onClick={(e) => deleteItem(item._id, e)}
                       style={styles.delBtn}
                     >✕</button>
                   </div>
@@ -411,12 +547,13 @@ acc[item.category].push(item);
         </div>
       </div>
 
-      {/* ══ RIGHT ══ */}
+      {/* ══ RIGHT PANEL ══ */}
       <div style={styles.right}>
 
         {/* ADD VIEW */}
         {view === "add" && (
           <div style={styles.view}>
+
             {/* Top bar */}
             <div style={styles.topbar}>
               <div style={styles.pageTitle}>Add Grocery Items</div>
@@ -433,14 +570,19 @@ acc[item.category].push(item);
               <div style={styles.sectionTitle}>Choose Category</div>
               <div style={styles.catGrid}>
                 {CATS.map((c) => (
-                  <CatCard key={c.key} cat={c} selected={selectedCat === c.key} onSelect={setSelectedCat} />
+                  <CatCard
+                    key={c.key}
+                    cat={c}
+                    selected={selectedCat === c.key}
+                    onSelect={setSelectedCat}
+                  />
                 ))}
               </div>
             </div>
 
             <div style={styles.divider} />
 
-            {/* Suggestions */}
+            {/* Quick suggestion chips */}
             <div style={styles.suggSection}>
               <div style={{ ...styles.sectionTitle, marginBottom: 8 }}>
                 Quick Add — <span>{activeCat?.label}</span>
@@ -450,7 +592,7 @@ acc[item.category].push(item);
                   <button
                     key={s}
                     className="sugg-chip"
-                    onClick={() => setIName(s)}
+                    onClick={() => setItemName(s)}
                     style={styles.suggChip}
                   >{s}</button>
                 ))}
@@ -459,7 +601,7 @@ acc[item.category].push(item);
 
             <div style={styles.divider} />
 
-            {/* Form */}
+            {/* Add item form */}
             <div style={styles.formArea}>
               <div style={styles.formTitle}>Item Details</div>
 
@@ -474,38 +616,42 @@ acc[item.category].push(item);
                 </div>
               )}
 
-              {/* Input row */}
+              {/* Name / Qty / Unit inputs */}
               <div style={styles.formRow}>
                 <input
-                  value={iName}
-                  onChange={(e) => setIName(e.target.value)}
+                  value={itemName}
+                  onChange={(e) => setItemName(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && addItem()}
                   placeholder="Item name (e.g. Tomatoes, Whole Milk…)"
                   style={styles.input}
                 />
                 <input
-                  value={iQty}
-                  onChange={(e) => setIQty(e.target.value)}
-                  type="number" min="1" placeholder="Qty"
+                  value={itemQty}
+                  onChange={(e) => setItemQty(e.target.value)}
+                  type="number"
+                  min="1"
+                  placeholder="Qty"
                   style={{ ...styles.input, width: 76 }}
                 />
                 <input
-                  value={iUnit}
-                  onChange={(e) => setIUnit(e.target.value)}
+                  value={itemUnit}
+                  onChange={(e) => setItemUnit(e.target.value)}
                   placeholder="Unit"
                   style={{ ...styles.input, width: 88 }}
                 />
               </div>
+
               <div style={{ marginBottom: 10 }}>
                 <button className="btn-add" onClick={addItem} style={styles.btnAdd}>
                   ＋ Add to List
                 </button>
               </div>
 
+              {/* Helpful tips */}
               <div style={styles.tips}>
                 <Tip color="#82c93e" text="Click item to mark bought" />
-                <Tip color="#ff9080"  text="✕ removes item"           />
-                <Tip color="#e8a020"  text="Enter to add fast"         />
+                <Tip color="#ff9080" text="✕ removes item"           />
+                <Tip color="#e8a020" text="Enter to add fast"         />
               </div>
             </div>
           </div>
@@ -514,6 +660,8 @@ acc[item.category].push(item);
         {/* CHECKOUT VIEW */}
         {view === "checkout" && (
           <div style={styles.view}>
+
+            {/* Top bar */}
             <div style={styles.coTopbar}>
               <button className="back-btn" onClick={() => setView("add")} style={styles.backBtn}>
                 ← Back
@@ -522,25 +670,26 @@ acc[item.category].push(item);
             </div>
 
             <div style={styles.coBody}>
-              {/* Full tracker */}
+              {/* Full delivery tracker */}
               <Tracker compact={false} />
 
-              <div style={{ ...styles.coSectionTitle, marginTop: 16 }}>Items ({items.length})</div>
+              <div style={{ ...styles.coSectionTitle, marginTop: 16 }}>
+                Items ({items.length})
+              </div>
 
               {items.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "36px 0", color: "#9a9080", fontSize: 13 }}>
                   No items in cart yet.
                 </div>
               ) : (
-                Object.entries(
-                  items.reduce((acc, i) => { (acc[i.category] ??= []).push(i); return acc; }, {})
-                ).map(([cat, catItems]) => (
+                // Items grouped by category
+                Object.entries(groupByCategory(items)).map(([cat, catItems]) => (
                   <div key={cat}>
                     <div style={{ ...styles.coSectionTitle, marginTop: 16 }}>
                       {getCatIcon(cat)} {cat}
                     </div>
                     {catItems.map((item) => (
-                      <div key={item.id} style={styles.coItem}>
+                      <div key={item._id} style={styles.coItem}>
                         <ItemThumb catKey={item.category} size={42} />
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={styles.coName}>{item.name}</div>
@@ -552,6 +701,7 @@ acc[item.category].push(item);
                 ))
               )}
 
+              {/* Bill summary + place order */}
               <div style={styles.billBox}>
                 <div style={styles.billRow}>
                   <span style={styles.billTotal}>Total Items</span>
@@ -566,7 +716,7 @@ acc[item.category].push(item);
         )}
       </div>
 
-      {/* Success overlay */}
+      {/* ══ SUCCESS OVERLAY ══ */}
       {showSuccess && (
         <div style={styles.successOverlay}>
           <div className="success-card" style={styles.successCard}>
@@ -585,73 +735,6 @@ acc[item.category].push(item);
   );
 }
 
-// ─── Tiny helper components ───────────────────────────────────────────────────
-
-function StatCard({ value, label, color }) {
-  return (
-    <div style={styles.stat}>
-      <div style={{ ...styles.sn, color }}>{value}</div>
-      <div style={styles.sl}>{label}</div>
-    </div>
-  );
-}
-
-function Tip({ color, text }) {
-  return (
-    <div style={styles.tip}>
-      <div style={{ ...styles.tipDot, background: color }} />
-      {text}
-    </div>
-  );
-}
-
-function CatCard({ cat, selected, onSelect }) {
-  const [errored, setErrored] = useState(false);
-  return (
-    <div
-      className="cat-card"
-      onClick={() => onSelect(cat.key)}
-      style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, cursor: "pointer" }}
-    >
-      <div
-        className="cat-img-wrap"
-        style={{
-          width: 58, height: 58, borderRadius: 16, overflow: "hidden",
-          border: selected ? "2px solid #2d6a4f" : "2px solid transparent",
-          background: "#ece7dd",
-          boxShadow: selected ? "0 0 0 3px rgba(45,106,79,.15),0 3px 10px rgba(0,0,0,.08)" : "0 2px 6px rgba(0,0,0,.06)",
-          transition: "all .16s",
-        }}
-      >
-        {!errored
-          ? <img src={cat.img} alt={cat.label} loading="lazy"
-              onError={() => setErrored(true)}
-              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-          : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>
-              {cat.icon}
-            </div>
-        }
-      </div>
-      <div style={{
-        fontSize: 10, fontWeight: selected ? 600 : 500,
-        color: selected ? "#2d6a4f" : "#9a9080",
-        textAlign: "center", lineHeight: 1.2,
-      }}>
-        {cat.label}
-      </div>
-    </div>
-  );
-}
-
-function CatPreviewImg({ cat }) {
-  const [errored, setErrored] = useState(false);
-  return errored
-    ? <span style={{ fontSize: 26 }}>{cat.icon}</span>
-    : <img src={cat.img} alt={cat.label}
-        onError={() => setErrored(true)}
-        style={{ width: 34, height: 34, borderRadius: 8, objectFit: "cover" }} />;
-}
-
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = {
@@ -661,23 +744,23 @@ const styles = {
     background: "#f6f2ec", color: "#1a1814",
   },
 
-  // LEFT
+  // LEFT SIDEBAR
   left: {
     background: "#1b4332", display: "flex", flexDirection: "column",
     overflow: "hidden", position: "relative",
   },
   leftBg: {
     position: "absolute", inset: 0, pointerEvents: "none",
-    background: `radial-gradient(ellipse 60% 40% at 10% 90%,rgba(130,201,62,.16) 0%,transparent 60%),
-                 radial-gradient(ellipse 50% 30% at 90% 5%,rgba(255,255,255,.06) 0%,transparent 55%)`,
+    background: `
+      radial-gradient(ellipse 60% 40% at 10% 90%, rgba(130,201,62,.16) 0%, transparent 60%),
+      radial-gradient(ellipse 50% 30% at 90%  5%, rgba(255,255,255,.06) 0%, transparent 55%)
+    `,
   },
   leftHead: {
     padding: "24px 24px 18px", flexShrink: 0, position: "relative", zIndex: 2,
     borderBottom: "1px solid rgba(255,255,255,.08)",
   },
-  brand: {
-    fontSize: 32, fontWeight: 700, color: "#fff", letterSpacing: -1,
-  },
+  brand: { fontSize: 32, fontWeight: 700, color: "#fff", letterSpacing: -1 },
   dateLbl: { fontSize: 11.5, color: "rgba(255,255,255,.35)", marginTop: 3 },
 
   statsGrid: {
@@ -692,11 +775,11 @@ const styles = {
   sl: { fontSize: 10, color: "rgba(255,255,255,.32)", textTransform: "uppercase", letterSpacing: ".1em", marginTop: 3, fontWeight: 600 },
 
   progWrap: { padding: "14px 24px 0", flexShrink: 0, position: "relative", zIndex: 2 },
-  progTop: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7 },
+  progTop:  { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7 },
   progTitle: { fontSize: 10, color: "rgba(255,255,255,.32)", letterSpacing: ".1em", textTransform: "uppercase", fontWeight: 600 },
-  progPct: { fontSize: 13, fontWeight: 700, color: "#a8e063" },
+  progPct:   { fontSize: 13, fontWeight: 700, color: "#a8e063" },
   progTrack: { height: 4, background: "rgba(255,255,255,.1)", borderRadius: 99, overflow: "hidden" },
-  progFill: { height: "100%", background: "linear-gradient(90deg,#82c93e,#a8e063)", borderRadius: 99, transition: "width .5s cubic-bezier(.4,0,.2,1)" },
+  progFill:  { height: "100%", background: "linear-gradient(90deg,#82c93e,#a8e063)", borderRadius: 99, transition: "width .5s cubic-bezier(.4,0,.2,1)" },
 
   deliveryStrip: {
     margin: "12px 24px 0", flexShrink: 0, position: "relative", zIndex: 2,
@@ -711,20 +794,20 @@ const styles = {
   },
   coTrackerTitle: { fontSize: 11, fontWeight: 600, color: "#9a9080", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 16 },
 
-  trackerRow: { display: "flex", alignItems: "center" },
-  trackerFragment: { display: "flex", alignItems: "center", flex: 1 },
-  miniStep: { display: "flex", flexDirection: "column", alignItems: "center", gap: 4 },
-  fullStep: { display: "flex", flexDirection: "column", alignItems: "center", gap: 5 },
+  trackerRow:     { display: "flex", alignItems: "center" },
+  trackerFragment:{ display: "flex", alignItems: "center", flex: 1 },
+  miniStep:       { display: "flex", flexDirection: "column", alignItems: "center", gap: 4 },
+  fullStep:       { display: "flex", flexDirection: "column", alignItems: "center", gap: 5 },
 
   dstepIcon: {
-    width: 30, height: 30, borderRadius: "50%", display: "flex", alignItems: "center",
-    justifyContent: "center", fontSize: 13,
+    width: 30, height: 30, borderRadius: "50%",
+    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13,
     border: "2px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.06)", transition: "all .4s",
   },
   dstepIconActive: { background: "#82c93e", borderColor: "#82c93e", boxShadow: "0 0 10px rgba(130,201,62,.4)" },
-  dstepIconDone: { background: "rgba(130,201,62,.2)", borderColor: "rgba(130,201,62,.4)" },
-  dstepLbl: { fontSize: 9, color: "rgba(255,255,255,.28)", fontWeight: 500, textAlign: "center", lineHeight: 1.2 },
-  dstepLblActive: { color: "#a8e063" },
+  dstepIconDone:   { background: "rgba(130,201,62,.2)", borderColor: "rgba(130,201,62,.4)" },
+  dstepLbl:        { fontSize: 9, color: "rgba(255,255,255,.28)", fontWeight: 500, textAlign: "center", lineHeight: 1.2 },
+  dstepLblActive:  { color: "#a8e063" },
 
   tstepCircle: {
     width: 40, height: 40, borderRadius: "50%", border: "2px solid #ddd5c5",
@@ -732,13 +815,18 @@ const styles = {
     transition: "all .4s", background: "#ece7dd",
   },
   tstepCircleActive: { background: "#1b4332", borderColor: "#1b4332", boxShadow: "0 0 0 4px rgba(27,67,50,.12)" },
-  tstepCircleDone: { background: "#82c93e", borderColor: "#82c93e" },
-  tstepName: { fontSize: 11, fontWeight: 600, color: "#9a9080", textAlign: "center" },
-  tstepNameActive: { color: "#1b4332" },
-  tstepSub: { fontSize: 10, color: "#9a9080", textAlign: "center" },
+  tstepCircleDone:   { background: "#82c93e", borderColor: "#82c93e" },
+  tstepName:         { fontSize: 11, fontWeight: 600, color: "#9a9080", textAlign: "center" },
+  tstepNameActive:   { color: "#1b4332" },
+  tstepSub:          { fontSize: 10, color: "#9a9080", textAlign: "center" },
 
-  trackerLine: { flex: 1, height: 2, background: "rgba(255,255,255,.1)", marginBottom: 14, transition: "background .4s" },
-  trackerLineDone: { background: "rgba(130,201,62,.4)" },
+  trackerLine:       { flex: 1, height: 2, background: "rgba(255,255,255,.1)", marginBottom: 14, transition: "background .4s" },
+  trackerLineDone:   { background: "rgba(130,201,62,.4)" },
+  trackerLineActive: {
+    background: "linear-gradient(90deg, rgba(130,201,62,.4) 0%, rgba(130,201,62,.9) 50%, rgba(130,201,62,.4) 100%)",
+    backgroundSize: "200% 100%",
+    animation: "shimmer 1.6s ease-in-out infinite",
+  },
 
   tabsRow: {
     display: "flex", alignItems: "center", gap: 5,
@@ -776,24 +864,25 @@ const styles = {
     width: 19, height: 19, borderRadius: 5, border: "1.5px solid rgba(255,255,255,.2)",
     display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all .14s",
   },
-  chkOn: { background: "#82c93e", borderColor: "#82c93e" },
-  iDetail: { flex: 1, minWidth: 0 },
-  iName: { fontSize: 13, fontWeight: 500, color: "rgba(255,255,255,.88)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
+  chkOn:     { background: "#82c93e", borderColor: "#82c93e" },
+  iDetail:   { flex: 1, minWidth: 0 },
+  iName:     { fontSize: 13, fontWeight: 500, color: "rgba(255,255,255,.88)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
   iNameDone: { textDecoration: "line-through" },
-  iMeta: { fontSize: 11, color: "rgba(255,255,255,.28)", marginTop: 2 },
+  iMeta:     { fontSize: 11, color: "rgba(255,255,255,.28)", marginTop: 2 },
   delBtn: {
     width: 22, height: 22, border: "none", background: "transparent", color: "rgba(255,255,255,.2)",
-    cursor: "pointer", fontSize: 11, borderRadius: 5, display: "flex", alignItems: "center",
-    justifyContent: "center", transition: "all .14s", flexShrink: 0, fontFamily: "inherit",
+    cursor: "pointer", fontSize: 11, borderRadius: 5,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    transition: "all .14s", flexShrink: 0, fontFamily: "inherit",
   },
 
   emptyState: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: "44px 20px", textAlign: "center" },
-  emptyImg: { width: 120, height: 120, borderRadius: 16, objectFit: "cover", opacity: 0.45 },
-  emptyTxt: { fontSize: 12.5, color: "rgba(255,255,255,.25)", lineHeight: 1.7 },
+  emptyImg:   { width: 120, height: 120, borderRadius: 16, objectFit: "cover", opacity: 0.45 },
+  emptyTxt:   { fontSize: 12.5, color: "rgba(255,255,255,.25)", lineHeight: 1.7 },
 
-  // RIGHT
+  // RIGHT PANEL
   right: { background: "#fdfaf6", display: "flex", flexDirection: "column", overflow: "hidden" },
-  view: { display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" },
+  view:  { display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" },
 
   topbar: {
     display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -810,21 +899,21 @@ const styles = {
     transition: "all .15s", display: "flex", alignItems: "center", gap: 6, fontFamily: "inherit",
   },
 
-  catSection: { padding: "18px 32px 14px", flexShrink: 0 },
+  catSection:   { padding: "18px 32px 14px", flexShrink: 0 },
   sectionTitle: { fontSize: 10, fontWeight: 600, letterSpacing: ".1em", textTransform: "uppercase", color: "#9a9080", marginBottom: 11 },
-  catGrid: { display: "grid", gridTemplateColumns: "repeat(8,1fr)", gap: 10 },
+  catGrid:      { display: "grid", gridTemplateColumns: "repeat(8,1fr)", gap: 10 },
 
   divider: { height: 1, background: "#ddd5c5", margin: "0 32px" },
 
   suggSection: { padding: "12px 32px 10px", flexShrink: 0 },
-  suggStrip: { display: "flex", gap: 7, flexWrap: "wrap" },
+  suggStrip:   { display: "flex", gap: 7, flexWrap: "wrap" },
   suggChip: {
     padding: "5px 13px", background: "#ece7dd", border: "1.5px solid #ddd5c5",
     borderRadius: 99, fontSize: 11.5, fontWeight: 500, color: "#1a1814",
     cursor: "pointer", transition: "all .14s", fontFamily: "inherit",
   },
 
-  formArea: { flex: 1, padding: "14px 32px 18px", display: "flex", flexDirection: "column", overflow: "hidden" },
+  formArea:  { flex: 1, padding: "14px 32px 18px", display: "flex", flexDirection: "column", overflow: "hidden" },
   formTitle: { fontSize: 15, fontWeight: 700, color: "#1a1814", marginBottom: 11, letterSpacing: "-.3px" },
   selPreview: {
     display: "flex", alignItems: "center", gap: 12, padding: "10px 14px",
@@ -847,7 +936,7 @@ const styles = {
     boxShadow: "0 3px 12px rgba(27,67,50,.22)",
   },
   tips: { display: "flex", gap: 18, marginTop: "auto", paddingTop: 12, borderTop: "1px solid #ddd5c5", flexShrink: 0 },
-  tip: { display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#9a9080" },
+  tip:  { display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#9a9080" },
   tipDot: { width: 6, height: 6, borderRadius: "50%", flexShrink: 0 },
 
   // CHECKOUT
@@ -860,16 +949,16 @@ const styles = {
     border: "1.5px solid #ddd5c5", padding: "6px 14px", borderRadius: 9,
     cursor: "pointer", transition: "all .15s", fontFamily: "inherit",
   },
-  coTitle: { fontSize: 22, fontWeight: 700, color: "#1a1814", letterSpacing: "-.4px" },
-  coBody: { flex: 1, overflowY: "auto", padding: "20px 32px 28px" },
-  coSectionTitle: { fontSize: 11, fontWeight: 600, color: "#9a9080", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 8 },
-  coItem: { display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: "1px solid #ddd5c5" },
-  coName: { fontSize: 13.5, fontWeight: 500, color: "#1a1814" },
-  coMeta: { fontSize: 11.5, color: "#9a9080" },
+  coTitle:       { fontSize: 22, fontWeight: 700, color: "#1a1814", letterSpacing: "-.4px" },
+  coBody:        { flex: 1, overflowY: "auto", padding: "20px 32px 28px" },
+  coSectionTitle:{ fontSize: 11, fontWeight: 600, color: "#9a9080", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 8 },
+  coItem:        { display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: "1px solid #ddd5c5" },
+  coName:        { fontSize: 13.5, fontWeight: 500, color: "#1a1814" },
+  coMeta:        { fontSize: 11.5, color: "#9a9080" },
 
   billBox: { background: "#fff", border: "1px solid #ddd5c5", borderRadius: 16, padding: "20px 24px", marginTop: 20 },
   billRow: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", fontSize: 13.5 },
-  billTotal: { fontSize: 17, fontWeight: 700, color: "#1a1814" },
+  billTotal:    { fontSize: 17, fontWeight: 700, color: "#1a1814" },
   billTotalAmt: { fontSize: 17, fontWeight: 700, color: "#1b4332" },
   placeBtn: {
     width: "100%", marginTop: 16, padding: 15, background: "#1b4332", color: "#fff",
@@ -877,7 +966,7 @@ const styles = {
     cursor: "pointer", transition: "all .18s", boxShadow: "0 4px 14px rgba(27,67,50,.25)",
   },
 
-  // SUCCESS
+  // SUCCESS OVERLAY
   successOverlay: {
     position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 100,
     display: "flex", alignItems: "center", justifyContent: "center",
@@ -886,7 +975,7 @@ const styles = {
     background: "#fff", borderRadius: 22, padding: "40px 44px", textAlign: "center", maxWidth: 380, width: "90%",
   },
   successTitle: { fontSize: 22, fontWeight: 700, color: "#1a1814", marginBottom: 6, letterSpacing: "-.4px" },
-  successSub: { fontSize: 13.5, color: "#9a9080", lineHeight: 1.6, marginBottom: 24 },
+  successSub:   { fontSize: 13.5, color: "#9a9080", lineHeight: 1.6, marginBottom: 24 },
   successClose: {
     background: "#1b4332", color: "#fff", border: "none", borderRadius: 11,
     padding: "12px 32px", fontFamily: "'Inter', sans-serif", fontSize: 14, fontWeight: 600,

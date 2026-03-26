@@ -1,0 +1,41 @@
+PROJECT NAME:
+Grocery List Manager with Purchase Tracking (MERN Stack)
+
+DESCRIPTION:
+This project is a web-based Grocery List Manager developed using the MERN stack (MongoDB, Express.js, React.js, Node.js). It allows users to add grocery items, categorize them, track purchased items, and manage their shopping list efficiently.
+
+The application provides features such as:
+- Adding and deleting grocery items
+- Marking items as purchased
+- Viewing pending and bought items
+- Real-time data storage using MongoDB
+- Checkout system with order summary
+
+REQUIREMENTS:
+
+Tools & Technologies:
+- Node.js
+- Express.js
+- MongoDB
+- React.js
+- Visual Studio Code
+
+Dependencies:
+- express
+- mongoose
+- cors
+- dotenv
+- react
+- react-dom
+
+API:
+
+Base URL:
+http://localhost:5000/items
+
+Endpoints:
+GET /items - Get all items
+GET /items/stats - Get statistics
+POST /items - Add new item
+PUT /items/:id - Update item
+DELETE /items/:id - Delete item
